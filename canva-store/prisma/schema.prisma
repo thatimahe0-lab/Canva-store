@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // Neon / Supabase / Netlify DB (Neon) all work
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  caption     String   // short teaser shown on cards / social previews
+  description String   // full description, supports markdown-ish plain text
+  priceInr    Int      // in paise (e.g. 19900 = ₹199.00)
+  priceUsd    Int      // in cents (e.g. 499 = $4.99)
+  coverImage  String   // public URL/path to preview image (used for OG share preview)
+  fileKey     String   // path/key to the actual downloadable file (never exposed publicly)
+  category    String   @default("General")
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  orders      Order[]
+}
+
+model Order {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id])
+  customerEmail String
+  amount        Int
+  currency      String   // "inr" | "usd"
+  provider      String   // "stripe" | "razorpay"
+  providerRef   String   // payment intent id / razorpay payment id
+  status        String   @default("pending") // pending | paid | failed
+  downloadToken String   @unique
+  downloadCount Int      @default(0)
+  createdAt     DateTime @default(now())
+}
+
+model AdminSession {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}

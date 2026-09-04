@@ -1,0 +1,8 @@
+node_modules/
+.next/
+.env
+dev.db
+secure-files/*
+!secure-files/.gitkeep
+public/uploads/*
+!public/uploads/.gitkeep
