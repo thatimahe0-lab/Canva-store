@@ -2,12 +2,12 @@ import Razorpay from "razorpay";
 import { prisma } from "@/lib/prisma";
 import { generateDownloadToken } from "@/lib/download-token";
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
 
-export async function POST(req) {
+
+export async function POST(req) {const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+  });
   const { productId, email } = await req.json();
 
   const product = await prisma.product.findUnique({ where: { id: productId } });
