@@ -3,10 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { sendDownloadEmail } from "@/lib/email";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-// Stripe requires the raw body to verify the webhook signature.
-export const config = { api: { bodyParser: false } };
-
 export async function POST(req) {
   const body = await req.text();
   const signature = req.headers.get("stripe-signature");
