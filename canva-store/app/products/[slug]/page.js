@@ -18,7 +18,7 @@ export async function generateMetadata({ params }) {
   const url = `${process.env.NEXT_PUBLIC_SITE_URL}/products/${product.slug}`;
 
   return {
-    title: `${product.title} | TemplateHaus`,
+    title: `${product.title} | TemplateTreasury`,
     description: product.caption,
     openGraph: {
       title: product.title,

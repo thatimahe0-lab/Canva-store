@@ -40,7 +40,7 @@ export default function BuyButtons({ productId }) {
       key: data.keyId,
       amount: data.amount,
       currency: "INR",
-      name: "TemplateHaus",
+      name: "TemplateTreasury",
       description: data.productTitle,
       order_id: data.orderId,
       prefill: { email },
