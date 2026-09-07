@@ -4,8 +4,9 @@ import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3
 // Backblaze B2, or plain AWS S3. R2 is the natural pick alongside Netlify:
 // no egress fees and a generous free tier.
 const s3 = new S3Client({
-  region: "auto",
+  region: process.env.S3_REGION || "auto",
   endpoint: process.env.S3_ENDPOINT,
+  forcePathStyle: true, // required for Supabase Storage (and harmless for R2/S3)
   credentials: {
     accessKeyId: process.env.S3_ACCESS_KEY_ID,
     secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
