@@ -17,53 +17,63 @@ export async function POST(req) {
   const unauthorized = requireAdmin();
   if (unauthorized) return unauthorized;
 
-  const form = await req.formData();
-  const title = form.get("title");
-  const caption = form.get("caption");
-  const description = form.get("description");
-  const priceInr = Math.round(parseFloat(form.get("priceInr")) * 100);
-  const priceUsd = Math.round(parseFloat(form.get("priceUsd")) * 100);
-  const category = form.get("category") || "General";
-  const coverImage = form.get("coverImage");
-  const templateFile = form.get("templateFile");
+  try {
+    const form = await req.formData();
+    const title = form.get("title");
+    const caption = form.get("caption");
+    const description = form.get("description");
+    const priceInr = Math.round(parseFloat(form.get("priceInr")) * 100);
+    const priceUsd = Math.round(parseFloat(form.get("priceUsd")) * 100);
+    const category = form.get("category") || "General";
+    const coverImage = form.get("coverImage");
+    const templateFile = form.get("templateFile");
 
-  if (!title || !coverImage || !templateFile) {
-    return Response.json({ error: "Missing required fields" }, { status: 400 });
-  }
+    if (!title || !coverImage || !templateFile) {
+      return Response.json({ error: "Missing required fields" }, { status: 400 });
+    }
 
-  const slug = slugify(title, { lower: true, strict: true }) + "-" + Date.now().toString(36);
+    const slug = slugify(title, { lower: true, strict: true }) + "-" + Date.now().toString(36);
 
-  // Cover image -> public bucket (renders on the site + as the social share preview)
-  const coverExt = coverImage.name.split(".").pop();
-  const coverKey = `covers/${slug}-cover.${coverExt}`;
-  const coverUrl = await uploadPublicFile(
-    Buffer.from(await coverImage.arrayBuffer()),
-    coverKey,
-    coverImage.type
-  );
+    // Cover image -> public bucket (renders on the site + as the social share preview)
+    const coverExt = coverImage.name.split(".").pop();
+    const coverKey = `covers/${slug}-cover.${coverExt}`;
+    const coverUrl = await uploadPublicFile(
+      Buffer.from(await coverImage.arrayBuffer()),
+      coverKey,
+      coverImage.type
+    );
 
-  // Template file -> private bucket (NEVER public, only reachable via /api/download/:token)
-  const fileKey = `templates/${slug}-${templateFile.name}`;
-  await uploadPrivateFile(
-    Buffer.from(await templateFile.arrayBuffer()),
-    fileKey,
-    templateFile.type
-  );
-
-  const product = await prisma.product.create({
-    data: {
-      slug,
-      title,
-      caption,
-      description,
-      priceInr,
-      priceUsd,
-      category,
-      coverImage: coverUrl,
+    // Template file -> private bucket (NEVER public, only reachable via /api/download/:token)
+    const fileKey = `templates/${slug}-${templateFile.name}`;
+    await uploadPrivateFile(
+      Buffer.from(await templateFile.arrayBuffer()),
       fileKey,
-    },
-  });
+      templateFile.type
+    );
 
-  return Response.json(product, { status: 201 });
+    const product = await prisma.product.create({
+      data: {
+        slug,
+        title,
+        caption,
+        description,
+        priceInr,
+        priceUsd,
+        category,
+        coverImage: coverUrl,
+        fileKey,
+      },
+    });
+
+    return Response.json(product, { status: 201 });
+  } catch (err) {
+    // Surface the real cause (e.g. storage misconfiguration) instead of a
+    // silent hang or an opaque 500 with no explanation.
+    console.error("Product upload failed:", err);
+    return Response.json(
+      { error: `Upload failed: ${err.message || "unknown error"}` },
+      { status: 500 }
+    );
+  }
 }
 

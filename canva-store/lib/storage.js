@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { NodeHttpHandler } from "@smithy/node-http-handler";
 
 // Works with any S3-compatible provider - Cloudflare R2, Supabase Storage,
 // Backblaze B2, or plain AWS S3. R2 is the natural pick alongside Netlify:
@@ -11,6 +12,14 @@ const s3 = new S3Client({
     accessKeyId: process.env.S3_ACCESS_KEY_ID,
     secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
   },
+  // Fail fast instead of hanging indefinitely if the storage endpoint is
+  // unreachable or misconfigured - a slow/broken connection now surfaces as
+  // a clear error within ~15s rather than a request that never resolves.
+  maxAttempts: 2,
+  requestHandler: new NodeHttpHandler({
+    connectionTimeout: 5000,
+    socketTimeout: 15000,
+  }),
 });
 
 // Cover images: public bucket, fronted by a CDN URL - these need to be
