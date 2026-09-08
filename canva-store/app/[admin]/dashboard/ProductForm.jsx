@@ -10,14 +10,35 @@ export default function ProductForm() {
     e.preventDefault();
     setStatus("Uploading...");
     const form = new FormData(e.target);
-    const res = await fetch("/api/admin/products", { method: "POST", body: form });
-    if (res.ok) {
-      setStatus("Added!");
-      e.target.reset();
-      router.refresh();
-    } else {
-      const data = await res.json();
-      setStatus(`Error: ${data.error}`);
+
+    // Give up after 30s with a clear message instead of waiting forever if
+    // the connection stalls or the server never responds.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const res = await fetch("/api/admin/products", {
+        method: "POST",
+        body: form,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        setStatus("Added!");
+        e.target.reset();
+        router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setStatus(`Error: ${data.error || `Server returned ${res.status}`}`);
+      }
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err.name === "AbortError") {
+        setStatus("Error: Upload timed out after 30s - the connection to storage may be failing.");
+      } else {
+        setStatus(`Error: ${err.message || "Network request failed"}`);
+      }
     }
   }
 
