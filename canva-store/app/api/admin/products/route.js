@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/require-admin";
-import { uploadPublicFile, uploadPrivateFile } from "@/lib/storage";
 import slugify from "slugify";
 
 export async function GET() {
@@ -11,45 +10,22 @@ export async function GET() {
   return Response.json(products);
 }
 
-// Accepts multipart/form-data: title, caption, description, priceInr, priceUsd,
-// category, coverImage (image file), templateFile (the actual .zip/.canva/.pdf).
+// The files are already uploaded directly to storage by this point (see
+// /api/admin/uploads/presign) - this route only ever receives small JSON
+// text, so it finishes in milliseconds regardless of file size or connection speed.
 export async function POST(req) {
   const unauthorized = requireAdmin();
   if (unauthorized) return unauthorized;
 
   try {
-    const form = await req.formData();
-    const title = form.get("title");
-    const caption = form.get("caption");
-    const description = form.get("description");
-    const priceInr = Math.round(parseFloat(form.get("priceInr")) * 100);
-    const priceUsd = Math.round(parseFloat(form.get("priceUsd")) * 100);
-    const category = form.get("category") || "General";
-    const coverImage = form.get("coverImage");
-    const templateFile = form.get("templateFile");
+    const body = await req.json();
+    const { title, caption, description, priceInr, priceUsd, category, coverImage, fileKey } = body;
 
-    if (!title || !coverImage || !templateFile) {
+    if (!title || !coverImage || !fileKey) {
       return Response.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     const slug = slugify(title, { lower: true, strict: true }) + "-" + Date.now().toString(36);
-
-    // Cover image -> public bucket (renders on the site + as the social share preview)
-    const coverExt = coverImage.name.split(".").pop();
-    const coverKey = `covers/${slug}-cover.${coverExt}`;
-    const coverUrl = await uploadPublicFile(
-      Buffer.from(await coverImage.arrayBuffer()),
-      coverKey,
-      coverImage.type
-    );
-
-    // Template file -> private bucket (NEVER public, only reachable via /api/download/:token)
-    const fileKey = `templates/${slug}-${templateFile.name}`;
-    await uploadPrivateFile(
-      Buffer.from(await templateFile.arrayBuffer()),
-      fileKey,
-      templateFile.type
-    );
 
     const product = await prisma.product.create({
       data: {
@@ -57,23 +33,20 @@ export async function POST(req) {
         title,
         caption,
         description,
-        priceInr,
-        priceUsd,
-        category,
-        coverImage: coverUrl,
+        priceInr: Math.round(parseFloat(priceInr) * 100),
+        priceUsd: Math.round(parseFloat(priceUsd) * 100),
+        category: category || "General",
+        coverImage,
         fileKey,
       },
     });
 
     return Response.json(product, { status: 201 });
   } catch (err) {
-    // Surface the real cause (e.g. storage misconfiguration) instead of a
-    // silent hang or an opaque 500 with no explanation.
-    console.error("Product upload failed:", err);
+    console.error("Product create failed:", err);
     return Response.json(
-      { error: `Upload failed: ${err.message || "unknown error"}` },
+      { error: `Save failed: ${err.message || "unknown error"}` },
       { status: 500 }
     );
   }
 }
-

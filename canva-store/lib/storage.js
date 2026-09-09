@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 
 // Works with any S3-compatible provider - Cloudflare R2, Supabase Storage,
@@ -57,4 +58,13 @@ export async function getPrivateFileBuffer(key) {
   const chunks = [];
   for await (const chunk of result.Body) chunks.push(chunk);
   return Buffer.concat(chunks);
+}
+
+// Generates a short-lived URL the browser can upload directly to - the file
+// bytes never pass through the Netlify function, which avoids serverless
+// execution time limits entirely for large or slow uploads.
+export async function getPresignedUploadUrl(target, key, contentType) {
+  const bucket = target === "public" ? process.env.S3_BUCKET_PUBLIC : process.env.S3_BUCKET_PRIVATE;
+  const command = new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: contentType });
+  return getSignedUrl(s3, command, { expiresIn: 300 }); // 5 minutes to complete the upload
 }

@@ -2,43 +2,87 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+function sanitize(name) {
+  return name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+}
+
+// Asks the server for a temporary upload URL, then sends the file straight
+// to storage from the browser - the file bytes never pass through our
+// Netlify function, so large files or slow connections can't time it out.
+async function uploadDirect(file, target, onStatus) {
+  const key = `${target === "public" ? "covers" : "templates"}/${Date.now()}-${sanitize(file.name)}`;
+
+  onStatus(`Requesting upload URL for ${file.name}...`);
+  const presignRes = await fetch("/api/admin/uploads/presign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, contentType: file.type || "application/octet-stream", target }),
+  });
+  if (!presignRes.ok) {
+    const data = await presignRes.json().catch(() => ({}));
+    throw new Error(data.error || `Could not get upload URL (status ${presignRes.status})`);
+  }
+  const { uploadUrl, publicUrl } = await presignRes.json();
+
+  onStatus(`Uploading ${file.name}...`);
+  const putRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  if (!putRes.ok) {
+    throw new Error(`Direct upload of ${file.name} to storage failed (status ${putRes.status})`);
+  }
+
+  return { key, publicUrl };
+}
+
 export default function ProductForm() {
   const [status, setStatus] = useState("");
   const router = useRouter();
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setStatus("Uploading...");
-    const form = new FormData(e.target);
+    const formEl = e.target;
+    const fd = new FormData(formEl);
+    const coverFile = fd.get("coverImage");
+    const templateFile = fd.get("templateFile");
 
-    // Give up after 30s with a clear message instead of waiting forever if
-    // the connection stalls or the server never responds.
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    if (!coverFile || !coverFile.name || !templateFile || !templateFile.name) {
+      setStatus("Error: please choose both a cover image and a template file.");
+      return;
+    }
 
     try {
+      const cover = await uploadDirect(coverFile, "public", setStatus);
+      const template = await uploadDirect(templateFile, "private", setStatus);
+
+      setStatus("Saving product details...");
       const res = await fetch("/api/admin/products", {
         method: "POST",
-        body: form,
-        signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: fd.get("title"),
+          caption: fd.get("caption"),
+          description: fd.get("description"),
+          category: fd.get("category"),
+          priceInr: fd.get("priceInr"),
+          priceUsd: fd.get("priceUsd"),
+          coverImage: cover.publicUrl,
+          fileKey: template.key,
+        }),
       });
-      clearTimeout(timeout);
 
       if (res.ok) {
         setStatus("Added!");
-        e.target.reset();
+        formEl.reset();
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
         setStatus(`Error: ${data.error || `Server returned ${res.status}`}`);
       }
     } catch (err) {
-      clearTimeout(timeout);
-      if (err.name === "AbortError") {
-        setStatus("Error: Upload timed out after 30s - the connection to storage may be failing.");
-      } else {
-        setStatus(`Error: ${err.message || "Network request failed"}`);
-      }
+      setStatus(`Error: ${err.message || "Upload failed"}`);
     }
   }
 
